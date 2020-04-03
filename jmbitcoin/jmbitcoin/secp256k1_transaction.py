@@ -667,6 +667,13 @@ def mk_freeze_script(pub, locktime):
         + 'ac' #OP_CHECKSIG
     )
 
+def mk_burn_script(data):
+    if not isinstance(data, str):
+        data = binascii.hexlify(data).decode()
+    return ("6a" #OP_RETURN
+        + serialize_script([data])
+    )
+
 # Signing and verifying
 
 def verify_tx_input(tx, i, script, sig, pub, scriptCode=None, amount=None):
