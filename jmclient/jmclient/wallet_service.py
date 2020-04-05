@@ -5,6 +5,7 @@ import time
 import ast
 import binascii
 import sys
+import itertools
 from decimal import Decimal
 from copy import deepcopy
 from twisted.internet import reactor
@@ -17,6 +18,7 @@ from jmclient.blockchaininterface import (INF_HEIGHT, BitcoinCoreInterface,
     BitcoinCoreNoHistoryInterface)
 from jmclient.wallet import FidelityBondMixin
 from jmbase.support import jmprint, EXIT_SUCCESS
+import jmbitcoin as btc
 """Wallet service
 
 The purpose of this independent service is to allow
@@ -537,6 +539,42 @@ class WalletService(Service):
                 jmprint(restart_msg, "important")
                 sys.exit(EXIT_SUCCESS)
 
+    def sync_burner_outputs(self, burner_txes):
+        mixdepth = FidelityBondMixin.FIDELITY_BOND_MIXDEPTH
+        address_type = FidelityBondMixin.BIP32_BURN_ID
+        self.wallet.set_next_index(mixdepth, address_type, self.wallet.gap_limit,
+            force=True)
+        highest_used_index = 0
+
+        known_burner_outputs = self.wallet.get_burner_outputs()
+        for index in range(self.wallet.gap_limit):
+            path = self.wallet.get_path(mixdepth, address_type, index)
+            path_privkey, engine = self.wallet._get_priv_from_path(path)
+            path_pubkey = engine.privkey_to_pubkey(path_privkey)
+            path_pubkeyhash = btc.bin_hash160(path_pubkey)
+
+            for burner_tx in burner_txes:
+                burner_pubkeyhash, gettx = burner_tx
+                if burner_pubkeyhash != path_pubkeyhash:
+                    continue
+                highest_used_index = index
+                path_repr = self.wallet.get_path_repr(path)
+                if path_repr.encode() in known_burner_outputs:
+                    continue
+                txid = gettx["txid"]
+                jlog.info("Found a burner transaction txid=" + txid + " path = "
+                    + path_repr)
+                merkle_branch = self.bci.get_tx_merkle_branch(txid, gettx["blockhash"])
+                if not merkle_branch:
+                    jlog.warning("Merkle branch not available, use wallet-tool `addtxoutproof`")
+                block_height = self.bci.rpc("getblockheader", [gettx["blockhash"]])["height"]
+                if merkle_branch:
+                    assert self.bci.verify_tx_merkle_branch(txid, block_height, merkle_branch)
+                self.wallet.add_burner_output(path_repr, gettx["hex"], block_height,
+                    merkle_branch, gettx["blockindex"])
+
+        self.wallet.set_next_index(mixdepth, address_type, highest_used_index + 1)
+
     def sync_addresses(self):
         """ Triggered by use of --recoversync option in scripts,
         attempts a full scan of the blockchain without assuming
@@ -553,9 +591,35 @@ class WalletService(Service):
             self.display_rescan_message_and_system_exit(self.restart_callback)
             return
 
-        used_addresses_gen = (tx['address']
-                              for tx in self.bci._yield_transactions(wallet_name)
-                              if tx['category'] == 'receive')
+        if isinstance(self.wallet, FidelityBondMixin):
+            tx_receive = []
+            burner_txes = []
+            for tx in self.bci._yield_transactions(wallet_name):
+                if tx['category'] == 'receive':
+                    tx_receive.append(tx)
+                elif tx["category"] == "send":
+                    gettx = self.bci.get_transaction(tx["txid"])
+                    txd = self.bci.get_deser_from_gettransaction(gettx)
+                    if len(txd["outs"]) > 1:
+                        continue
+                    #must be mined into a block to sync
+                    #otherwise there's no merkleproof or block index
+                    if gettx["confirmations"] < 1:
+                        continue
+                    script = binascii.unhexlify(txd["outs"][0]["script"])
+                    if script[0] != 0x6a: #OP_RETURN
+                        continue
+                    pubkeyhash = script[2:]
+                    burner_txes.append((pubkeyhash, gettx))
+
+            self.sync_burner_outputs(burner_txes)
+            used_addresses_gen = (tx["address"] for tx in tx_receive)
+        else:
+            #not fidelity bond wallet, significantly faster sync
+            used_addresses_gen = (tx['address']
+                                  for tx in self.bci._yield_transactions(wallet_name)
+                                  if tx['category'] == 'receive')
+
         used_indices = self.get_used_indices(used_addresses_gen)
         jlog.debug("got used indices: {}".format(used_indices))
         gap_limit_used = not self.check_gap_indices(used_indices)
