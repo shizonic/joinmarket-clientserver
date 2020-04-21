@@ -960,12 +960,118 @@ class BaseWallet(object):
                     return False
         return True
 
+    @staticmethod
+    def utxos_to_txouts(utxos):
+        """ converts utxos as returned by select_utxos to
+        CTxOut objects as used by bitcointx.
+        """
+        return [btc.CMutableTxOut(v["value"],
+                v["script"]) for _, v in utxos.items()]
+
     def close(self):
         self._storage.close()
 
     def __del__(self):
         self.close()
 
+class DummyKeyStore(btc.KeyStore):
+    @classmethod
+    def from_iterable(cls, iterable, **kwargs):
+        kstore = cls(**kwargs)
+        for k in iterable:
+            kstore.add_key(k)
+        return kstore
+
+    def add_key(self, k):
+        print("working with key: ", k)
+        print("It is: ", type(k))
+        print("Is it a CKeyBase?: ", isinstance(k, btc.CKeyBase))
+        if isinstance(k, btc.CKeyBase):
+            if k.pub.key_id in self._privkeys:
+                assert self._privkeys[k.pub.key_id] == k
+            else:
+                self._privkeys[k.pub.key_id] = k
+        else:
+            raise ValueError('object supplied to add_key is of unrecognized type')
+
+class PSBTWalletMixin(object):
+    """
+    Mixin for BaseWallet to provide BIP174
+    functions.
+    """
+    def __init__(self, storage, **kwargs):
+        super(PSBTWalletMixin, self).__init__(storage, **kwargs)
+
+    @staticmethod
+    def witness_utxos_to_psbt_utxos(utxos):
+        """ Given a dict of utxos as returned from select_utxos,
+        convert them to the format required to populate PSBT inputs,
+        names CTxOut. Note that the non-segwit case is different, there
+        you should provide an entire CMutableTransaction object instead.
+        """
+        res = []
+        for k, v in utxos:
+            res.append(btc.CMutableTxOut(v["value"], v["script"]))
+        return res
+
+    def create_psbt_from_tx(self, tx, spent_outs=None):
+        """ Given a CMutableTransaction object, which should not currently
+        contain signatures, we create and return a new PSBT object of type
+        btc.PartiallySignedTransaction.
+        Optionally the information about the spent outputs that is stored
+        in PSBT_IN_NONWITNESS_UTXO, PSBT_IN_WITNESS_UTXO and PSBT_IN_REDEEM_SCRIPT
+        can also be provided, one item per input, in the tuple (spent_outs).
+        These objects should be either CMutableTransaction, CTxOut or None,
+        Note that redeem script information cannot be provided for inputs which
+        we don't own.
+        """
+        new_psbt = btc.PartiallySignedTransaction(unsigned_tx=tx)
+        if spent_outs is None:
+            # user has not provided input script information; psbt
+            # will not yet be usable for signing.
+            return new_psbt
+        for i, txinput in enumerate(new_psbt.inputs):
+            if spent_outs[i] is None:
+                continue
+            if isinstance(spent_outs[i], (btc.CMutableTransaction, btc.CMutableTxOut)):
+                # note that we trust the caller to choose Tx vs TxOut as according
+                # to non-witness/witness:
+                txinput.utxo = spent_outs[i]
+            else:
+                assert False, "invalid spent output type passed into PSBT creator"
+        # we now insert redeemscripts where that is possible and necessary:
+        for i, txinput in enumerate(new_psbt.inputs):
+            if isinstance(txinput.utxo, btc.CMutableTxOut):
+                # witness; TODO: native case, possibly p2sh legacy case
+                path = self.script_to_path(txinput.utxo.scriptPubKey)
+                privkey, _ = self._get_priv_from_path(path)
+                txinput.redeem_script = btc.pubkey_to_p2wpkh_script(btc.privkey_to_pubkey(privkey))
+        return new_psbt
+
+    def sign_psbt(self, in_psbt):
+        """ Given a serialized PSBT in raw binary format,
+        iterate over the inputs and sign all that we can sign with this wallet.
+        Return: (psbt, msg)
+        msg: error message or None
+        psbt: signed psbt in binary serialzation, or None if error.
+        """
+        try:
+            new_psbt = btc.PartiallySignedTransaction.from_binary(in_psbt)
+        except:
+            return None, "Unable to deserialize the PSBT object, invalid format."
+        privkeys = []
+        for k, v in self._utxos._utxo.items():
+            for k2, v2 in v.items():
+                privkeys.append(self._get_priv_from_path(v2[0]))
+        jmckeys = list(btc.JMCKey(x[0][:-1]) for x in privkeys)
+        new_keystore = DummyKeyStore.from_iterable(jmckeys)
+        try:
+            signresult = new_psbt.sign(new_keystore)
+        except Exception as e:
+            return None, repr(e)
+        # TODO: use the information in the SignResult object
+        # to compare with expected (finalized or not, how many sigs added).
+        return new_psbt.serialize(), None
 
 class ImportWalletMixin(object):
     """
@@ -1553,10 +1659,10 @@ class BIP84Wallet(BIP32PurposedWallet):
     _PURPOSE = 2**31 + 84
     _ENGINE = ENGINES[TYPE_P2WPKH]
 
-class SegwitLegacyWallet(ImportWalletMixin, BIP39WalletMixin, BIP49Wallet):
+class SegwitLegacyWallet(ImportWalletMixin, BIP39WalletMixin, PSBTWalletMixin, BIP49Wallet):
     TYPE = TYPE_P2SH_P2WPKH
 
-class SegwitWallet(ImportWalletMixin, BIP39WalletMixin, BIP84Wallet):
+class SegwitWallet(ImportWalletMixin, BIP39WalletMixin, PSBTWalletMixin, BIP84Wallet):
     TYPE = TYPE_P2WPKH
 
 WALLET_IMPLEMENTATIONS = {
