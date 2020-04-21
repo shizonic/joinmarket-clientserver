@@ -960,14 +960,6 @@ class BaseWallet(object):
                     return False
         return True
 
-    @staticmethod
-    def utxos_to_txouts(utxos):
-        """ converts utxos as returned by select_utxos to
-        CTxOut objects as used by bitcointx.
-        """
-        return [btc.CMutableTxOut(v["value"],
-                v["script"]) for _, v in utxos.items()]
-
     def close(self):
         self._storage.close()
 
@@ -983,9 +975,6 @@ class DummyKeyStore(btc.KeyStore):
         return kstore
 
     def add_key(self, k):
-        print("working with key: ", k)
-        print("It is: ", type(k))
-        print("Is it a CKeyBase?: ", isinstance(k, btc.CKeyBase))
         if isinstance(k, btc.CKeyBase):
             if k.pub.key_id in self._privkeys:
                 assert self._privkeys[k.pub.key_id] == k
@@ -1006,13 +995,11 @@ class PSBTWalletMixin(object):
     def witness_utxos_to_psbt_utxos(utxos):
         """ Given a dict of utxos as returned from select_utxos,
         convert them to the format required to populate PSBT inputs,
-        names CTxOut. Note that the non-segwit case is different, there
+        namely CTxOut. Note that the non-segwit case is different, there
         you should provide an entire CMutableTransaction object instead.
         """
-        res = []
-        for k, v in utxos:
-            res.append(btc.CMutableTxOut(v["value"], v["script"]))
-        return res
+        return [btc.CMutableTxOut(v["value"],
+                                  v["script"]) for _, v in utxos.items()]
 
     def create_psbt_from_tx(self, tx, spent_outs=None):
         """ Given a CMutableTransaction object, which should not currently
@@ -1025,6 +1012,7 @@ class PSBTWalletMixin(object):
         Note that redeem script information cannot be provided for inputs which
         we don't own.
         """
+        # TODO: verify tx contains no signatures as a sanity check?
         new_psbt = btc.PartiallySignedTransaction(unsigned_tx=tx)
         if spent_outs is None:
             # user has not provided input script information; psbt
@@ -1032,6 +1020,7 @@ class PSBTWalletMixin(object):
             return new_psbt
         for i, txinput in enumerate(new_psbt.inputs):
             if spent_outs[i] is None:
+                # as above, will not be signable in this case
                 continue
             if isinstance(spent_outs[i], (btc.CMutableTransaction, btc.CMutableTxOut)):
                 # note that we trust the caller to choose Tx vs TxOut as according
@@ -1043,17 +1032,29 @@ class PSBTWalletMixin(object):
         for i, txinput in enumerate(new_psbt.inputs):
             if isinstance(txinput.utxo, btc.CMutableTxOut):
                 # witness; TODO: native case, possibly p2sh legacy case
-                path = self.script_to_path(txinput.utxo.scriptPubKey)
+                try:
+                    path = self.script_to_path(txinput.utxo.scriptPubKey)
+                except AssertionError:
+                    # this happens when an input is provided but it's not in
+                    # this wallet; in this case, we cannot set the redeem script.
+                    continue
                 privkey, _ = self._get_priv_from_path(path)
-                txinput.redeem_script = btc.pubkey_to_p2wpkh_script(btc.privkey_to_pubkey(privkey))
+                txinput.redeem_script = btc.pubkey_to_p2wpkh_script(
+                    btc.privkey_to_pubkey(privkey))
         return new_psbt
 
-    def sign_psbt(self, in_psbt):
+    def sign_psbt(self, in_psbt, with_sign_result=False):
         """ Given a serialized PSBT in raw binary format,
         iterate over the inputs and sign all that we can sign with this wallet.
+        NB IT IS UP TO CALLERS TO ENSURE THAT THEY ACTUALLY WANT TO SIGN
+        THIS TRANSACTION!
+        The above is important especially in coinjoin scenarios.
         Return: (psbt, msg)
         msg: error message or None
-        psbt: signed psbt in binary serialzation, or None if error.
+        if not `with_sign_result`:
+        psbt: signed psbt in binary serialization, or None if error.
+        if `with_sign_result` True:
+        psbt: (PSBT_SignResult object, psbt (deserialized) object)
         """
         try:
             new_psbt = btc.PartiallySignedTransaction.from_binary(in_psbt)
@@ -1069,9 +1070,10 @@ class PSBTWalletMixin(object):
             signresult = new_psbt.sign(new_keystore)
         except Exception as e:
             return None, repr(e)
-        # TODO: use the information in the SignResult object
-        # to compare with expected (finalized or not, how many sigs added).
-        return new_psbt.serialize(), None
+        if not with_sign_result:
+            return new_psbt.serialize(), None
+        else:
+            return (signresult, new_psbt), None
 
 class ImportWalletMixin(object):
     """
