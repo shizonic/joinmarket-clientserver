@@ -1031,16 +1031,20 @@ class PSBTWalletMixin(object):
         # we now insert redeemscripts where that is possible and necessary:
         for i, txinput in enumerate(new_psbt.inputs):
             if isinstance(txinput.utxo, btc.CMutableTxOut):
-                # witness; TODO: native case, possibly p2sh legacy case
-                try:
-                    path = self.script_to_path(txinput.utxo.scriptPubKey)
-                except AssertionError:
-                    # this happens when an input is provided but it's not in
-                    # this wallet; in this case, we cannot set the redeem script.
+                # witness
+                if txinput.utxo.scriptPubKey.is_witness_scriptpubkey():
+                    # nothing needs inserting; the scriptSig is empty.
                     continue
-                privkey, _ = self._get_priv_from_path(path)
-                txinput.redeem_script = btc.pubkey_to_p2wpkh_script(
-                    btc.privkey_to_pubkey(privkey))
+                elif txinput.utxo.scriptPubKey.is_p2sh():
+                    try:
+                        path = self.script_to_path(txinput.utxo.scriptPubKey)
+                    except AssertionError:
+                        # this happens when an input is provided but it's not in
+                        # this wallet; in this case, we cannot set the redeem script.
+                        continue
+                    privkey, _ = self._get_priv_from_path(path)
+                    txinput.redeem_script = btc.pubkey_to_p2wpkh_script(
+                        btc.privkey_to_pubkey(privkey))
         return new_psbt
 
     def sign_psbt(self, in_psbt, with_sign_result=False):
@@ -1619,7 +1623,7 @@ class BIP32Wallet(BaseWallet):
         return self._get_mixdepth_from_path(path), path[-2], path[-1]
 
 
-class LegacyWallet(ImportWalletMixin, BIP32Wallet):
+class LegacyWallet(ImportWalletMixin, PSBTWalletMixin, BIP32Wallet):
     TYPE = TYPE_P2PKH
     _ENGINE = ENGINES[TYPE_P2PKH]
 
