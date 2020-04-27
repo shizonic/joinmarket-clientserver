@@ -322,9 +322,18 @@ class BTC_Timelocked_P2WSH(BTCEngine):
         return btc.bin_to_b58check(priv, cls.WIF_PREFIX)
 
     @classmethod
-    def sign_transaction(cls, tx, index, privkey, amount,
+    def sign_transaction(cls, tx, index, privkey_locktime, amount,
                          hashcode=btc.SIGHASH_ALL, **kwargs):
-        raise Exception("not implemented yet")
+        assert amount is not None
+
+        privkey, locktime = privkey_locktime
+        privkey = hexlify(privkey).decode()
+        pubkey = btc.privkey_to_pubkey(privkey)
+        redeem_script = cls.pubkey_to_script_code((pubkey, locktime))
+        tx = btc.serialize(tx)
+        sig = btc.get_p2sh_signature(tx, index, redeem_script, privkey,
+            amount)
+        return btc.apply_freeze_signature(tx, index, redeem_script, sig)
 
 class BTC_Watchonly_Timelocked_P2WSH(BTC_Timelocked_P2WSH):
 
@@ -353,7 +362,7 @@ class BTC_Watchonly_Timelocked_P2WSH(BTC_Timelocked_P2WSH):
     @classmethod
     def sign_transaction(cls, tx, index, privkey, amount,
                          hashcode=btc.SIGHASH_ALL, **kwargs):
-        raise Exception("not implemented yet")
+        raise RuntimeError("Cannot spend from watch-only wallets")
 
 class BTC_Watchonly_P2SH_P2WPKH(BTC_P2SH_P2WPKH):
 
