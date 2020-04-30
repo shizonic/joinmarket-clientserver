@@ -1,7 +1,3 @@
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-from builtins import * # noqa: F401
-
 # Implementation of proposal as per
 # https://gist.github.com/AdamISZ/2c13fb5819bd469ca318156e2cf25d79
 # (BIP SNICKER)

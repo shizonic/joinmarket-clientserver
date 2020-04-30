@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-from future.utils import iteritems
 
 import base64
 import pprint
@@ -354,7 +353,7 @@ class Taker(object):
         rejected_counterparties = []
 
         #Need to authorize against the btc pubkey first.
-        for nick, nickdata in iteritems(ioauth_data):
+        for nick, nickdata in ioauth_data.items():
             utxo_list, auth_pub, cj_addr, change_addr, btc_sig, maker_pk = nickdata
             if not self.auth_counterparty(btc_sig, auth_pub, maker_pk):
                 jlog.debug(
@@ -374,7 +373,7 @@ class Taker(object):
 
         self.maker_utxo_data = {}
 
-        for nick, nickdata in iteritems(ioauth_data):
+        for nick, nickdata in ioauth_data.items():
             utxo_list, auth_pub, cj_addr, change_addr, _, _ = nickdata
             utxo_data = jm_single().bc_interface.query_utxo_set(utxo_list)
             self.utxos[nick] = utxo_list
@@ -452,8 +451,7 @@ class Taker(object):
         #used to track return of signatures for phase 2
         self.nonrespondants = list(self.maker_utxo_data.keys())
 
-        my_total_in = sum([va['value'] for u, va in iteritems(self.input_utxos)
-                          ])
+        my_total_in = sum([va['value'] for u, va in self.input_utxos.items()])
         if self.my_change_addr:
             #Estimate fee per choice of next/3/6 blocks targetting.
             estimated_fee = estimate_tx_fee(
@@ -559,7 +557,7 @@ class Taker(object):
         utxo_data = jm_single().bc_interface.query_utxo_set([x[
             1] for x in utxo.values()])
         # insert signatures
-        for i, u in iteritems(utxo):
+        for i, u in utxo.items():
             if utxo_data[i] is None:
                 continue
             # Check if the sender included the scriptCode in the sig message;
@@ -698,7 +696,7 @@ class Taker(object):
             new_utxos, too_old, too_small = filter_by_coin_age_amt(list(utxos.keys()),
                                                                    age, amt)
             new_utxos_dict = {k: v for k, v in utxos.items() if k in new_utxos}
-            for k, v in iteritems(new_utxos_dict):
+            for k, v in new_utxos_dict.items():
                 addr = self.wallet_service.script_to_addr(v["script"])
                 priv = self.wallet_service.get_key_from_addr(addr)
                 if priv:  #can be null from create-unsigned
@@ -985,7 +983,7 @@ class P2EPTaker(Taker):
         # use output destination self.my_cj_addr and use amount self.amount
         self.outputs.append({'address': self.my_cj_addr,
                                      'value': self.cjamount})
-        my_total_in = sum([va['value'] for u, va in iteritems(self.input_utxos)])
+        my_total_in = sum([va['value'] for u, va in self.input_utxos.items()])
         # estimate the fee for the version of the transaction which is
         # not coinjoined:
         est_fee = estimate_tx_fee(len(self.input_utxos), 2,
@@ -1137,7 +1135,7 @@ class P2EPTaker(Taker):
         # Next we'll verify each of the counterparty's inputs,
         # while at the same time gathering the total they spent.
         total_receiver_input = 0
-        for i, u in iteritems(retrieve_utxos):
+        for i, u in retrieve_utxos.items():
             if utxo_data[i] is None:
                 return (False, "Proposed transaction contains invalid utxos")
             total_receiver_input += utxo_data[i]["value"]

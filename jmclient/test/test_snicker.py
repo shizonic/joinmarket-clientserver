@@ -1,9 +1,6 @@
 #! /usr/bin/env python
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-from builtins import * # noqa: F401
-'''Test of unusual transaction types creation and push to
-network to check validity.'''
+'''Test of SNICKER functionality using Joinmarket
+   wallets as defined in jmclient.wallet.'''
 
 import binascii
 from commontest import make_wallets, dummy_accept_callback, dummy_info_callback

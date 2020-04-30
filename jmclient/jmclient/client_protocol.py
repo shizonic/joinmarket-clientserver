@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-from future.utils import iteritems
 from twisted.internet import protocol, reactor, task
 from twisted.internet.error import (ConnectionLost, ConnectionAborted,
                                     ConnectionClosed, ConnectionDone)
@@ -303,7 +302,7 @@ class JMMakerClientProtocol(JMClientProtocol):
         return {"accepted": True}
 
     def tx_match(self, txd):
-        for k,v in iteritems(self.finalized_offers):
+        for k,v in items(self.finalized_offers):
             # Tx considered defined by its output set
             if v["txd"].vout == txd.vout:
                 offerinfo = v

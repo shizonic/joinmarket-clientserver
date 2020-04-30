@@ -1,5 +1,4 @@
 #!/usr/bin/python
-from future.utils import native_bytes, bytes_to_native_str
 import binascii
 import hashlib
 import sys
@@ -60,7 +59,7 @@ def privkey_to_pubkey(priv):
     and return compressed/uncompressed public key as appropriate.'''
     compressed, priv = read_privkey(priv)
     #secp256k1 checks for validity of key value.
-    newpriv = secp256k1.PrivateKey(secret=native_bytes(priv))
+    newpriv = secp256k1.PrivateKey(secret=priv)
     return newpriv.public_key.format(compressed)
 
 # b58check wrapper functions around bitcointx.base58 functions:
@@ -137,7 +136,7 @@ def multiply(s, pub, return_serialized=True):
     '''
     newpub = secp256k1.PublicKey(pub)
     #see note to "tweak_mul" function in podle.py
-    res = newpub.multiply(native_bytes(s))
+    res = newpub.multiply(s)
     if not return_serialized:
         return res
     return res.format()
