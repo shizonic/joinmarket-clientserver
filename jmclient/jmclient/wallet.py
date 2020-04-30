@@ -1043,7 +1043,7 @@ class PSBTWalletMixin(object):
                 assert False, "invalid spent output type passed into PSBT creator"
         # we now insert redeemscripts where that is possible and necessary:
         for i, txinput in enumerate(new_psbt.inputs):
-            if isinstance(txinput.utxo, btc.CMutableTxOut):
+            if isinstance(txinput.utxo, btc.CTxOut):
                 # witness
                 if txinput.utxo.scriptPubKey.is_witness_scriptpubkey():
                     # nothing needs inserting; the scriptSig is empty.
