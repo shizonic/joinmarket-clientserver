@@ -6,12 +6,11 @@ from binascii import hexlify, unhexlify
 
 import pytest
 import jmbitcoin as btc
-from jmbase import (get_log, utxostr_to_utxo, utxo_to_utxostr,
-                    hextobin, bintohex)
+from jmbase import get_log, hextobin
 from jmclient import load_test_config, jm_single, \
     SegwitLegacyWallet,BIP32Wallet, BIP49Wallet, LegacyWallet,\
     VolatileStorage, get_network, cryptoengine, WalletError,\
-    SegwitWallet, WalletService, BTC_P2PKH, BTC_P2SH_P2WPKH
+    SegwitWallet, WalletService
 from test_blockchaininterface import sync_test_wallet
 
 testdir = os.path.dirname(os.path.realpath(__file__))

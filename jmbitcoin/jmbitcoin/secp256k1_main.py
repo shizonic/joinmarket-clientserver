@@ -1,14 +1,11 @@
 #!/usr/bin/python
-import binascii
-import hashlib
-import sys
 import base64
 import struct
 import coincurve as secp256k1
 
 from bitcointx import base58
-from bitcointx.core import Hash, CBitcoinTransaction
-from bitcointx.core.key import CKeyBase, CPubKey
+from bitcointx.core import Hash
+from bitcointx.core.key import CKeyBase
 from bitcointx.signmessage import BitcoinMessage
 
 #Required only for PoDLE calculation:

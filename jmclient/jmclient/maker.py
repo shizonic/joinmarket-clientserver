@@ -6,8 +6,7 @@ import sys
 import abc
 
 import jmbitcoin as btc
-from jmbase import (bintohex, hextobin, hexbin,
-                    get_log, EXIT_SUCCESS, EXIT_FAILURE)
+from jmbase import bintohex, hexbin, get_log, EXIT_SUCCESS, EXIT_FAILURE
 from jmclient.wallet import estimate_tx_fee, compute_tx_locktime
 from jmclient.wallet_service import WalletService
 from jmclient.configure import jm_single

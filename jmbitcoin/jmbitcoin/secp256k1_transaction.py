@@ -1,18 +1,12 @@
 #!/usr/bin/python
-from past.builtins import basestring
-from io import BytesIO
-import binascii
-import copy
-import re
-import os
-import struct
+
 # note, only used for non-cryptographic randomness:
 import random
 from jmbitcoin.secp256k1_main import *
 
 from bitcointx.core import (CMutableTransaction, Hash160, CTxInWitness,
-                            CTxWitness, CMutableOutPoint, CMutableTxIn,
-                            CMutableTxOut, ValidationError, lx, x)
+                            CMutableOutPoint, CMutableTxIn,
+                            CMutableTxOut, ValidationError)
 from bitcointx.core.script import *
 from bitcointx.wallet import P2WPKHBitcoinAddress, CCoinAddress
 from bitcointx.core.scripteval import (VerifyScript, SCRIPT_VERIFY_WITNESS,

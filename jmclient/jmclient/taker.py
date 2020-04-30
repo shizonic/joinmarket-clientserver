@@ -7,11 +7,11 @@ from twisted.internet import reactor, task
 
 import jmbitcoin as btc
 from jmclient.configure import jm_single, validate_address
-from jmbase import get_log, hextobin, bintohex, hexbin
+from jmbase import get_log, bintohex, hexbin
 from jmclient.support import (calc_cj_fee, weighted_order_choose, choose_orders,
                               choose_sweep_orders)
 from jmclient.wallet import estimate_tx_fee, compute_tx_locktime
-from jmclient.podle import generate_podle, get_podle_commitments, PoDLE
+from jmclient.podle import generate_podle, get_podle_commitments
 from jmclient.wallet_service import WalletService
 from .output import generate_podle_error_string
 from .cryptoengine import EngineError
@@ -829,7 +829,8 @@ class Taker(object):
             self.on_finished_callback(False, fromtx=True)
         else:
             if nick_to_use:
-                return (nick_to_use, tx)
+                # TODO option not currently functional
+                return (nick_to_use, self.latest_tx.serialize())
         #if push was not successful, return None
 
     def self_sign_and_push(self):

@@ -25,7 +25,7 @@ from .cryptoengine import TYPE_P2PKH, TYPE_P2SH_P2WPKH,\
 from .support import get_random_bytes
 from . import mn_encode, mn_decode
 import jmbitcoin as btc
-from jmbase import JM_WALLET_NAME_PREFIX, bintohex
+from jmbase import JM_WALLET_NAME_PREFIX
 
 
 """

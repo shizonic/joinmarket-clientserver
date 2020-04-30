@@ -216,8 +216,8 @@ def lookup_appdata_folder(appname):
 # and internal. See details in hexbin() docstring.
 
 def cv(x):
-    success, utxo = utxostr_to_utxo(x)
-    if success:
+    good, utxo = utxostr_to_utxo(x)
+    if good:
         return utxo
     else:
         try:

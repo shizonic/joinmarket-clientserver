@@ -41,7 +41,7 @@ def verify_snicker_output(tx, pub, tweak, spk_type='p2sh-p2wpkh'):
     or -1 and None if it is not found exactly once.
     TODO Add support for other scriptPubKey types.
     """
-    assert isinstance(tx, btc.CBitcoinTransaction)
+    assert isinstance(tx, btc.CTransaction)
     expected_destination_pub = snicker_pubkey_tweak(pub, tweak)
     expected_destination_spk = pubkey_to_p2sh_p2wpkh_script(expected_destination_pub)
     found = 0

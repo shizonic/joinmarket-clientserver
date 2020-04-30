@@ -3,7 +3,6 @@
 import collections
 import time
 import ast
-import binascii
 import sys
 from decimal import Decimal
 from copy import deepcopy
@@ -15,8 +14,8 @@ from jmclient.configure import jm_single, get_log
 from jmclient.output import fmt_tx_data
 from jmclient.blockchaininterface import (INF_HEIGHT, BitcoinCoreInterface,
     BitcoinCoreNoHistoryInterface)
-from jmbase.support import jmprint, EXIT_SUCCESS, utxo_to_utxostr, bintohex, hextobin
-from jmbitcoin import lx
+from jmbase.support import jmprint, EXIT_SUCCESS, utxo_to_utxostr, hextobin
+
 """Wallet service
 
 The purpose of this independent service is to allow
