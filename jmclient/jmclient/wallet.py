@@ -979,23 +979,6 @@ class BaseWallet(object):
     def __del__(self):
         self.close()
 
-class DummyKeyStore(btc.KeyStore):
-    @classmethod
-    def from_iterable(cls, iterable, **kwargs):
-        kstore = cls(**kwargs)
-        for k in iterable:
-            kstore.add_key(k)
-        return kstore
-
-    def add_key(self, k):
-        if isinstance(k, btc.CKeyBase):
-            if k.pub.key_id in self._privkeys:
-                assert self._privkeys[k.pub.key_id] == k
-            else:
-                self._privkeys[k.pub.key_id] = k
-        else:
-            raise ValueError('object supplied to add_key is of unrecognized type')
-
 class PSBTWalletMixin(object):
     """
     Mixin for BaseWallet to provide BIP174
@@ -1075,14 +1058,15 @@ class PSBTWalletMixin(object):
         """
         try:
             new_psbt = btc.PartiallySignedTransaction.from_binary(in_psbt)
-        except:
-            return None, "Unable to deserialize the PSBT object, invalid format."
+        except Exception as e:
+            return None, "Unable to deserialize binary PSBT, error: " + repr(e)
         privkeys = []
         for k, v in self._utxos._utxo.items():
             for k2, v2 in v.items():
                 privkeys.append(self._get_priv_from_path(v2[0]))
         jmckeys = list(btc.JMCKey(x[0][:-1]) for x in privkeys)
-        new_keystore = DummyKeyStore.from_iterable(jmckeys)
+        new_keystore = btc.KeyStore.from_iterable(jmckeys,
+                                                  require_path_templates=False)
 
         # for p2sh inputs that we want to sign, the redeem_script
         # field must be populated by us, as the counterparty did not
