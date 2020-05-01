@@ -10,7 +10,7 @@ from .schedule import human_readable_schedule_entry, tweak_tumble_schedule,\
     schedule_to_text
 from .wallet import BaseWallet, estimate_tx_fee, compute_tx_locktime
 from jmbitcoin import (make_shuffled_tx, amount_to_str,
-                       PartiallySignedTransaction, CMutableTxOut)
+                       PartiallySignedTransaction, CMutableTxOut, hrt)
 from jmbase.support import EXIT_SUCCESS
 log = get_log()
 
@@ -102,8 +102,7 @@ def direct_send(wallet_service, amount, mixdepth, destaddr, answeryes=False,
             return False
         new_psbt_signed = PartiallySignedTransaction.deserialize(serialized_psbt)
         print("Completed PSBT created: ")
-        print(pformat(new_psbt_signed))
-        # TODO add more readable info here as for case below.
+        print(wallet_service.hr_psbt(new_psbt_signed))
         return new_psbt_signed
     else:
         success, msg = wallet_service.sign_tx(tx, inscripts)
@@ -111,9 +110,7 @@ def direct_send(wallet_service, amount, mixdepth, destaddr, answeryes=False,
             log.error("Failed to sign transaction, quitting. Error msg: " + msg)
             return
         log.info("Got signed transaction:\n")
-        log.info(pformat(str(tx)))
-        log.info("In serialized form (for copy-paste):")
-        log.info(bintohex(tx.serialize()))
+        log.info(hrt(tx))
         actual_amount = amount if amount != 0 else total_inputs_val - fee_est
         log.info("Sends: " + amount_to_str(actual_amount) + " to address: " + destaddr)
         if not answeryes:
@@ -122,7 +119,7 @@ def direct_send(wallet_service, amount, mixdepth, destaddr, answeryes=False,
                     log.info("You chose not to broadcast the transaction, quitting.")
                     return False
             else:
-                accepted = accept_callback(pformat(str(tx)), destaddr, actual_amount,
+                accepted = accept_callback(hrt(tx), destaddr, actual_amount,
                                            fee_est)
                 if not accepted:
                     return False
