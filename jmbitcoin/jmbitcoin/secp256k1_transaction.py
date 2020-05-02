@@ -672,7 +672,7 @@ def mk_freeze_script(pub, locktime):
 def mk_burn_script(data):
     if not isinstance(data, str):
         data = binascii.hexlify(data).decode()
-    return ("6a" #OP_RETURN
+    return (hex(btc.OP_RETURN)[2:]
         + serialize_script([data])
     )
 
