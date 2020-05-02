@@ -10,6 +10,7 @@ import struct
 import random
 from jmbitcoin.secp256k1_main import *
 from jmbitcoin.bech32 import *
+import jmbitcoin as btc
 
 P2PKH_PRE, P2PKH_POST = b'\x76\xa9\x14', b'\x88\xac'
 P2SH_P2WPKH_PRE, P2SH_P2WPKH_POST = b'\xa9\x14', b'\x87'
@@ -660,11 +661,12 @@ def mk_freeze_script(pub, locktime):
         raise TypeError("locktime must be int")
     if not isinstance(pub, str):
         pub = binascii.hexlify(pub).decode()
+
     return (serialize_script([locktime])
-        + 'b1' #OP_CHECKLOCKTIMEVERIFY
-        + '75' #OP_DROP
+        + hex(btc.OP_CHECKLOCKTIMEVERIFY)[2:]
+        + hex(btc.OP_DROP)[2:]
         + serialize_script([pub])
-        + 'ac' #OP_CHECKSIG
+        + hex(btc.OP_CHECKSIG)[2:]
     )
 
 def mk_burn_script(data):
