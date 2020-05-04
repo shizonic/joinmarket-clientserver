@@ -5,9 +5,16 @@
     side of the test.
     Use the same command line setup as for ygrunner.py,
     except you needn't specify --nirc=
+    NOTE: to run this test you will need a `key.pem`
+    and a `cert.pem` in this (test/) directory,
+    created in the standard way for ssl certificates.
+    Note that (in test) the client will not verify
+    them.
 """
+import os
 from twisted.web.server import Site
 from twisted.web.resource import Resource
+from twisted.internet import ssl
 from twisted.internet import reactor, endpoints
 from io import BytesIO
 from common import make_wallets
@@ -20,13 +27,23 @@ from jmclient import load_test_config, jm_single,\
 # TODO change test for arbitrary payment requests
 payment_amt = 30000000
 
+dir_path = os.path.dirname(os.path.realpath(__file__))
+
+def get_ssl_context():
+    """Construct an SSL context factory from the user's privatekey/cert.
+    Here just hardcoded for tests.
+    Note this is off by default since the cert needs setting up.
+    """
+    return ssl.DefaultOpenSSLContextFactory(os.path.join(dir_path, "key.pem"),
+                                            os.path.join(dir_path, "cert.pem"))
+
 class PayjoinServer(Resource):
     def __init__(self, wallet_service):
         self.wallet_service = wallet_service
         super().__init__()
     isLeaf = True
     def render_GET(self, request):
-        return "<html>Hello, world!</html>".encode("utf-8")
+        return "<html>Only for testing.</html>".encode("utf-8")
     def render_POST(self, request):
         """ The sender will use POST to send the initial
         payment transaction.
@@ -145,8 +162,11 @@ def test_start_payjoin_server(setup_payjoin_server):
     server_wallet_service.sync_wallet(fast=True)
     
     site = Site(PayjoinServer(server_wallet_service))
-    endpoint = endpoints.TCP4ServerEndpoint(reactor, 8080)
-    endpoint.listen(site)
+    # TODO for now, just sticking with TLS test as non-encrypted
+    # is unlikely to be used, but add that option.
+    reactor.listenSSL(8080, site, contextFactory=get_ssl_context())
+    #endpoint = endpoints.TCP4ServerEndpoint(reactor, 8080)
+    #endpoint.listen(site)
     reactor.run()
 
 @pytest.fixture(scope="module")

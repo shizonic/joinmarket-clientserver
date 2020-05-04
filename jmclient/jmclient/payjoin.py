@@ -1,6 +1,9 @@
-
+from zope.interface import implementer
 from twisted.internet import reactor
-from twisted.web.client import Agent, readBody
+from twisted.web.client import (Agent, readBody, ResponseFailed,
+                                BrowserLikePolicyForHTTPS)
+from twisted.web.iweb import IPolicyForHTTPS
+from twisted.internet.ssl import CertificateOptions
 from twisted.web.http_headers import Headers
 
 import json
@@ -19,6 +22,31 @@ For some documentation see:
     https://github.com/bitcoin/bips/blob/master/bip-0079.mediawiki
 """
 log = get_log()
+
+""" This whitelister allows us to accept any cert for a specific
+    domain, and is to be used for testing only; the default Agent
+    behaviour of twisted.web.client.Agent for https URIs is
+    the correct one in production (i.e. uses local trust store).
+"""
+@implementer(IPolicyForHTTPS)
+class WhitelistContextFactory(object):
+    def __init__(self, good_domains=None):
+        """
+        :param good_domains: List of domains. The URLs must be in bytes
+        """
+        if not good_domains:
+            self.good_domains = []
+        else:
+            self.good_domains = good_domains
+        # by default, handle requests like a browser would
+        self.default_policy = BrowserLikePolicyForHTTPS()
+
+    def creatorForNetloc(self, hostname, port):
+        # check if the hostname is in the the whitelist,
+        # otherwise return the default policy
+        if hostname in self.good_domains:
+            return CertificateOptions(verify=False)
+        return self.default_policy.creatorForNetloc(hostname, port)
 
 class JMPayjoinManager(object):
     """ An encapsulation of state for an
@@ -174,11 +202,20 @@ class JMPayjoinManager(object):
             # check the utxo field of the input and see if the
             # scriptPubKey is of the right type.
             spk = in_pbst.inputs[ind].utxo.scriptPubKey
-            try:
-                btc.P2SHCoinAddress.from_scriptPubKey(spk)
-            except btc.P2SHCoinAddressError:
-                return (False,
-                        "Receiver input type does not match ours.")
+            if isinstance(self.wallet_service.wallet, SegwitLegacyWallet):
+                try:
+                    btc.P2SHCoinAddress.from_scriptPubKey(spk)
+                except btc.P2SHCoinAddressError:
+                    return (False,
+                            "Receiver input type does not match ours.")
+            elif isinstance(self.wallet_service.wallet, SegwitWallet):
+                try:
+                    btc.P2WPKHCoinAddress.from_scriptPubKey(spk)
+                except btc.P2WPKHCoinAddressError:
+                    return (False,
+                            "Receiver input type does not match ours.")
+            else:
+                assert False
         # 5
         # To get the feerate of the psbt proposed, we use the already-signed
         # version (so all witnesses filled in) to calculate its size,
@@ -308,7 +345,7 @@ def parse_payjoin_setup(bip21_uri, wallet_service, mixdepth):
     return JMPayjoinManager(wallet_service, mixdepth, destaddr, amount, server)
 
 def send_payjoin(manager, accept_callback=None,
-                 info_callback=None):
+                 info_callback=None, tls_whitelist=None):
     """ Given a JMPayjoinManager object `manager`, initialised with the
     payment request data from the server, use its wallet_service to construct
     a payment transaction, with coins sourced from mixdepth `mixdepth`,
@@ -316,6 +353,10 @@ def send_payjoin(manager, accept_callback=None,
     The info and accept callbacks are to ask the user to confirm the creation of
     the original payment transaction (None defaults to terminal/CLI processing),
     and are as defined in `taker_utils.direct_send`.
+
+    If `tls_whitelist` is a list of bytestrings, they are treated as hostnames
+    for which tls certificate verification is ignored. Obviously this is ONLY for
+    testing.
 
     Returns:
     (True, None) in case of payment setup successful (response will be delivered
@@ -339,7 +380,12 @@ def send_payjoin(manager, accept_callback=None,
 
     # Now we send the request to the server, with the encoded
     # payment PSBT
-    agent = Agent(reactor)
+    if not tls_whitelist:
+        agent = Agent(reactor)
+    else:
+        agent = Agent(reactor,
+            contextFactory=WhitelistContextFactory(tls_whitelist))
+
     body = BytesProducer(payment_psbt.to_base64().encode("utf-8"))
     # TODO what to use as user agent?
     d = agent.request(b"POST", manager.server.encode("utf-8"),
@@ -348,6 +394,11 @@ def send_payjoin(manager, accept_callback=None,
         bodyProducer=body)
 
     d.addCallback(receive_payjoin_proposal_from_server, manager)
+    def noResponse(failure):
+        failure.trap(ResponseFailed)
+        log.error(failure.value.reasons[0].getTraceback())
+        reactor.stop()
+    d.addErrback(noResponse)
     return (True, None)
 
 def fallback_nonpayjoin_broadcast(manager, err):
@@ -357,22 +408,20 @@ def fallback_nonpayjoin_broadcast(manager, err):
     original_tx = manager.initial_psbt.extract_transaction()
     if not jm_single().bc_interface.pushtx(original_tx.serialize()):
         log.error("Unable to broadcast original payment. The payment is NOT made.")
-    print("We paid without coinjoin. Transaction: ")
+    log.info("We paid without coinjoin. Transaction: ")
     log.info(btc.hrt(original_tx))
 
 def receive_payjoin_proposal_from_server(response, manager):
     assert isinstance(manager, JMPayjoinManager)
-    print("Response version:", response.version)
-    print("Response code:", response.code)
-    print("Response phrase:", response.phrase)
+
     # if the response code is not 200 OK, we must assume payjoin
     # attempt has failed, and revert to standard payment.
-    print("response version is type: ", type(response.version))
     if int(response.code) != 200:
         fallback_nonpayjoin_broadcast(manager, err=response.phrase)
         return
-    print("Response headers:")
-    print(pformat(list(response.headers.getAllRawHeaders())))
+    # for debugging; will be removed in future:
+    log.debug("Response headers:")
+    log.debug(pformat(list(response.headers.getAllRawHeaders())))
     # no attempt at chunking or handling incrementally is needed
     # here. The body should be a byte string containing the
     # new PSBT.
