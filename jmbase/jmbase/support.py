@@ -215,7 +215,7 @@ def lookup_appdata_folder(appname):
 # helper functions for conversions of format between over-the-wire JM
 # and internal. See details in hexbin() docstring.
 
-def cv(x):
+def _convert(x):
     good, utxo = utxostr_to_utxo(x)
     if good:
         return utxo
@@ -234,18 +234,18 @@ def listchanger(l):
         elif isinstance(x, dict):
             rlist.append(dictchanger(x))
         else:
-            rlist.append(cv(x))
+            rlist.append(_convert(x))
     return rlist
 
 def dictchanger(d):
     rdict = {}
     for k, v in d.items():
         if isinstance(v, dict):
-            rdict[cv(k)] = dictchanger(v)
+            rdict[_convert(k)] = dictchanger(v)
         elif isinstance(v, list):
-            rdict[cv(k)] = listchanger(v)
+            rdict[_convert(k)] = listchanger(v)
         else:
-            rdict[cv(k)] = cv(v)
+            rdict[_convert(k)] = _convert(v)
     return rdict
 
 def hexbin(func):
@@ -271,7 +271,7 @@ def hexbin(func):
             elif isinstance(arg, dict):
                 newargs.append(dictchanger(arg))
             else:
-                newargs.append(cv(arg))
+                newargs.append(_convert(arg))
         return func(inst, *newargs, **kwargs)
 
     return func_wrapper

@@ -11,5 +11,5 @@ setup(name='joinmarketbase',
       packages=['jmbase'],
       install_requires=['twisted==19.7.0', 'service-identity',
                         'chromalog==1.0.5'],
-      python_requires='>=3.3',
+      python_requires='>=3.6',
       zip_safe=False)
