@@ -226,11 +226,15 @@ class JMPayjoinManager(object):
         nonpayjoin_tx_fee = gffp(self.initial_psbt)
         proposed_tx_size = signed_psbt_for_fees.extract_transaction(
             ).get_virtual_size()
-        nonpayjoin_tx_size = signed_psbt_for_fees.extract_transaction(
+        nonpayjoin_tx_size = self.initial_psbt.extract_transaction(
             ).get_virtual_size()
         proposed_fee_rate = proposed_tx_fee / float(proposed_tx_size)
+        log.debug("proposed fee rate: " + str(proposed_fee_rate))
         nonpayjoin_fee_rate = nonpayjoin_tx_fee / float(nonpayjoin_tx_size)
-        if abs(proposed_fee_rate - nonpayjoin_fee_rate)/nonpayjoin_fee_rate > 0.2:
+        log.debug("nonpayjoin fee rate: " + str(nonpayjoin_fee_rate))
+        diff_rate = abs(proposed_fee_rate - nonpayjoin_fee_rate)/nonpayjoin_fee_rate
+        if diff_rate > 0.2:
+            log.error("Bad fee rate differential: " + str(diff_rate))
             return (False, "fee rate of payjoin tx is more than 20% different "
                            "from inital fee rate, rejecting.")
         # 6
@@ -239,6 +243,8 @@ class JMPayjoinManager(object):
         # 7
         # we created all inputs with one sequence number, make sure everything
         # agrees
+        # TODO - btcpayerserver doesn't agree with the client, but uses rbf
+        # for all its inputs, so we are for now forced to agree. Bug?
         seqno = self.initial_psbt.unsigned_tx.vin[0].nSequence
         for inp in in_pbst.unsigned_tx.vin:
             if inp.nSequence != seqno:
@@ -371,7 +377,7 @@ def send_payjoin(manager, accept_callback=None,
     payment_psbt = direct_send(manager.wallet_service, manager.amount, manager.mixdepth,
                              str(manager.destination), accept_callback=accept_callback,
                              info_callback=info_callback,
-                             with_final_psbt=True)
+                             with_final_psbt=True, optin_rbf=True)
     if not payment_psbt:
         return (False, "could not create non-payjoin payment")
 
@@ -389,11 +395,13 @@ def send_payjoin(manager, accept_callback=None,
     body = BytesProducer(payment_psbt.to_base64().encode("utf-8"))
     # TODO what to use as user agent?
     d = agent.request(b"POST", manager.server.encode("utf-8"),
-        Headers({"User-Agent": ["Joinmarket user agent"],
-                 "Content-Type": ['text/plain']}),
+        Headers({"Content-Type": ['text/plain']}),
         bodyProducer=body)
 
     d.addCallback(receive_payjoin_proposal_from_server, manager)
+    # note that the errback (here "noresponse") is *not* triggered
+    # by a server rejection (which is accompanied by a non-200
+    # status code returned), but by failure to communicate.
     def noResponse(failure):
         failure.trap(ResponseFailed)
         log.error(failure.value.reasons[0].getTraceback())
@@ -410,6 +418,7 @@ def fallback_nonpayjoin_broadcast(manager, err):
         log.error("Unable to broadcast original payment. The payment is NOT made.")
     log.info("We paid without coinjoin. Transaction: ")
     log.info(btc.hrt(original_tx))
+    reactor.stop()
 
 def receive_payjoin_proposal_from_server(response, manager):
     assert isinstance(manager, JMPayjoinManager)
@@ -429,6 +438,7 @@ def receive_payjoin_proposal_from_server(response, manager):
     d.addCallback(process_payjoin_proposal_from_server, manager)
 
 def process_payjoin_proposal_from_server(response_body, manager):
+    assert isinstance(manager, JMPayjoinManager)
     try:
         payjoin_proposal_psbt = \
             btc.PartiallySignedTransaction.from_base64(response_body)
@@ -437,6 +447,16 @@ def process_payjoin_proposal_from_server(response_body, manager):
         fallback_nonpayjoin_broadcast(manager, err="Server sent invalid psbt")
         return
 
+    log.debug("Receiver sent us this PSBT: ")
+    log.debug(manager.wallet_service.hr_psbt(payjoin_proposal_psbt))
+    # we need to add back in our utxo information to the received psbt,
+    # since the servers remove it (not sure why?)
+    for i, inp in enumerate(payjoin_proposal_psbt.unsigned_tx.vin):
+        for j, inp2 in enumerate(manager.initial_psbt.unsigned_tx.vin):
+                    if (inp.prevout.hash, inp.prevout.n) == (
+                        inp2.prevout.hash, inp2.prevout.n):
+                        payjoin_proposal_psbt.inputs[i].utxo = \
+                            manager.initial_psbt.inputs[j].utxo
     signresultandpsbt, err = manager.wallet_service.sign_psbt(
         payjoin_proposal_psbt.serialize(), with_sign_result=True)
     if err:
@@ -444,7 +464,7 @@ def process_payjoin_proposal_from_server(response_body, manager):
         fallback_nonpayjoin_broadcast(manager, err="Failed to sign receiver PSBT")
         return
 
-    signresult, sender_signed_psbt =  signresultandpsbt
+    signresult, sender_signed_psbt = signresultandpsbt
     assert signresult.is_final
     success, msg = manager.set_payjoin_psbt(payjoin_proposal_psbt, sender_signed_psbt)
     if not success:
@@ -465,3 +485,4 @@ def process_payjoin_proposal_from_server(response_body, manager):
         log.info("The above transaction failed to broadcast.")
     else:
         log.info("Payjoin transactoin broadcast successfully.")
+    reactor.stop()
