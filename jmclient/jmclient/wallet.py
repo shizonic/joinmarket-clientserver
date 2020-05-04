@@ -1201,8 +1201,7 @@ class PSBTWalletMixin(object):
             for k2, v2 in v.items():
                 privkeys.append(self._get_priv_from_path(v2[0]))
         jmckeys = list(btc.JMCKey(x[0][:-1]) for x in privkeys)
-        new_keystore = btc.KeyStore.from_iterable(jmckeys,
-                                                  require_path_templates=False)
+        new_keystore = btc.KeyStore.from_iterable(jmckeys)
 
         # for p2sh inputs that we want to sign, the redeem_script
         # field must be populated by us, as the counterparty did not
