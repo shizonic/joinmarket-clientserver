@@ -91,6 +91,9 @@ class JMPayjoinManager(object):
         self.initial_psbt = None
         self.payjoin_psbt = None
         self.final_psbt = None
+        # change is initialized as None
+        # in case there is no change:
+        self.change_out = None
 
     def set_payment_tx_and_psbt(self, in_psbt):
         assert isinstance(in_psbt, btc.PartiallySignedTransaction)
@@ -134,12 +137,19 @@ class JMPayjoinManager(object):
 
         found_amt = 0
         found_addr = 0
+        # our logic requires no more than one change output
+        # for now:
+        assert len(self.payment_tx.vout) in [1, 2]
         for out in self.payment_tx.vout:
             if out.nValue == self.amount:
                 found_amt += 1
             if btc.CCoinAddress.from_scriptPubKey(
                 out.scriptPubKey) == self.destination:
                 found_addr += 1
+            else:
+                # store this for our balance check
+                # for receiver proposal
+                self.change_out = out
         if not found_amt == 1 and found_addr == 1:
             return False
 
@@ -243,12 +253,13 @@ class JMPayjoinManager(object):
         # 7
         # we created all inputs with one sequence number, make sure everything
         # agrees
-        # TODO - btcpayerserver doesn't agree with the client, but uses rbf
-        # for all its inputs, so we are for now forced to agree. Bug?
-        seqno = self.initial_psbt.unsigned_tx.vin[0].nSequence
-        for inp in in_pbst.unsigned_tx.vin:
-            if inp.nSequence != seqno:
-                return (False, "all sequence numbers are not the same.")
+        # TODO - discussion with btcpayserver devs, docs will be updated,
+        # server will agree with client in future. For now disabling check
+        # (it's a very complicated issue, surprisingly!)
+        #seqno = self.initial_psbt.unsigned_tx.vin[0].nSequence
+        #for inp in in_pbst.unsigned_tx.vin:
+        #    if inp.nSequence != seqno:
+        #        return (False, "all sequence numbers are not the same.")
         # 8
         if in_pbst.unsigned_tx.nLockTime != \
            self.initial_psbt.unsigned_tx.nLockTime:
@@ -260,6 +271,12 @@ class JMPayjoinManager(object):
         if proposed_tx_fee >= 2 * nonpayjoin_tx_fee:
             return (False, "receiver's tx fee is too large (possibly "
                     "too many extra inputs.")
+        # as well as the overall fee, check our pay-out specifically:
+        for out in in_pbst.unsigned_tx.vout:
+            if out.scriptPubKey == self.change_out.scriptPubKey:
+                found += 1
+                if self.change_out.nValue - out.nValue > nonpayjoin_tx_fee:
+                    return (False, "Our change output was reduced too much.")
         return (True, None)
 
     def set_payjoin_psbt(self, in_psbt, signed_psbt_for_fees):
@@ -377,7 +394,7 @@ def send_payjoin(manager, accept_callback=None,
     payment_psbt = direct_send(manager.wallet_service, manager.amount, manager.mixdepth,
                              str(manager.destination), accept_callback=accept_callback,
                              info_callback=info_callback,
-                             with_final_psbt=True, optin_rbf=True)
+                             with_final_psbt=True)
     if not payment_psbt:
         return (False, "could not create non-payjoin payment")
 
