@@ -135,22 +135,20 @@ class JMPayjoinManager(object):
         # Core versions sufficiently high, also encapsulate
         # it in bc_interface.
 
-        found_amt = 0
-        found_addr = 0
         # our logic requires no more than one change output
         # for now:
+        found_payment = 0
         assert len(self.payment_tx.vout) in [1, 2]
         for out in self.payment_tx.vout:
-            if out.nValue == self.amount:
-                found_amt += 1
-            if btc.CCoinAddress.from_scriptPubKey(
-                out.scriptPubKey) == self.destination:
-                found_addr += 1
+            if out.nValue == self.amount and \
+               btc.CCoinAddress.from_scriptPubKey(
+                   out.scriptPubKey) == self.destination:
+                found_payment += 1
             else:
                 # store this for our balance check
                 # for receiver proposal
                 self.change_out = out
-        if not found_amt == 1 and found_addr == 1:
+        if not found_payment == 1:
             return False
 
         return True
