@@ -66,7 +66,7 @@ JM_CORE_VERSION = '0.6.2'
 JM_GUI_VERSION = '12'
 
 from jmbase import get_log
-from jmbase.support import DUST_THRESHOLD, EXIT_FAILURE
+from jmbase.support import DUST_THRESHOLD, EXIT_FAILURE, utxo_to_utxostr, bintohex
 from jmclient import load_program_config, get_network, update_persist_config,\
     open_test_wallet_maybe, get_wallet_path,\
     jm_single, validate_address, weighted_order_choose, Taker,\
@@ -1122,7 +1122,7 @@ class CoinsTab(QWidget):
                 else:
                     for k, v in um.items():
                         # txid:index, btc, address
-                        t = btc.safe_hexlify(k[0])+":"+str(k[1])
+                        t = utxo_to_utxostr(k)
                         s = "{0:.08f}".format(v['value']/1e8)
                         a = mainWindow.wallet_service.script_to_addr(v["script"])
                         item = QTreeWidgetItem([t, s, a])
